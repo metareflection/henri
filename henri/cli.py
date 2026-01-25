@@ -3,25 +3,16 @@
 import argparse
 import asyncio
 import importlib.util
-import os
 import sys
 from pathlib import Path
 
 from henri.agent import run_agent
 from henri.config import (
     DEFAULT_PROVIDER,
-    DEFAULT_BEDROCK_MODEL,
-    DEFAULT_GOOGLE_MODEL,
-    DEFAULT_OLLAMA_MODEL,
-    DEFAULT_OLLAMA_HOST,
-    DEFAULT_VERTEX_MODEL,
+    env_var,
+    get_provider_config,
 )
 from henri.providers import PROVIDERS
-
-
-def env_var(name: str, default=None):
-    """Get environment variable with HENRI_ prefix."""
-    return os.environ.get(f"HENRI_{name}", default)
 
 
 def load_hook(hook_path: str):
@@ -84,36 +75,27 @@ def main():
     )
     args = parser.parse_args()
 
-    # Apply env vars for special cases (int conversion, list splitting)
-    if args.max_turns is None:
-        max_turns_env = env_var("MAX_TURNS")
-        if max_turns_env:
-            args.max_turns = int(max_turns_env)
-
+    # Apply env vars for hooks (list splitting)
     if args.hook is None:
         hook_env = env_var("HOOK")
         if hook_env:
             args.hook = hook_env.split(":")
 
+    # Get resolved provider configuration
+    config = get_provider_config(
+        provider=args.provider,
+        model=args.model,
+        region=args.region,
+        host=args.host,
+        max_turns=args.max_turns,
+    )
+
     # Validate openai_compatible provider requirements
-    if args.provider == "openai_compatible":
-        if args.model is None:
+    if config.provider == "openai_compatible":
+        if config.model is None:
             parser.error("--model is required for openai_compatible provider")
-        if args.host is None:
+        if config.host is None:
             parser.error("--host is required for openai_compatible provider")
-
-    # Apply default host for ollama if not specified
-    if args.provider == "ollama" and args.host is None:
-        args.host = DEFAULT_OLLAMA_HOST
-
-    # Determine model based on provider if not specified
-    if args.model is None:
-        args.model = {
-            "bedrock": DEFAULT_BEDROCK_MODEL,
-            "google": DEFAULT_GOOGLE_MODEL,
-            "ollama": DEFAULT_OLLAMA_MODEL,
-            "vertex": DEFAULT_VERTEX_MODEL,
-        }[args.provider]
 
     # Load hooks if specified
     hooks = []
@@ -122,12 +104,12 @@ def main():
             hooks.append(load_hook(hook_path))
 
     asyncio.run(run_agent(
-        provider=args.provider,
-        model=args.model,
-        region=args.region,
-        host=args.host,
+        provider=config.provider,
+        model=config.model,
+        region=config.region,
+        host=config.host,
         hooks=hooks,
-        max_turns=args.max_turns,
+        max_turns=config.max_turns,
         stats_file=args.stats_file,
     ))
 
