@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +17,11 @@ from henri.config import (
     DEFAULT_VERTEX_MODEL,
 )
 from henri.providers import PROVIDERS
+
+
+def env_var(name: str, default=None):
+    """Get environment variable with HENRI_ prefix."""
+    return os.environ.get(f"HENRI_{name}", default)
 
 
 def load_hook(hook_path: str):
@@ -35,24 +41,28 @@ def load_hook(hook_path: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Henri - A pedagogical Claude Code clone",
+        description="Henri - A pedagogical Claude Code clone. "
+        "All options can be set via HENRI_<OPTION> env vars (e.g., HENRI_PROVIDER).",
     )
     parser.add_argument(
         "--provider", "-p",
         choices=list(PROVIDERS.keys()),
-        default=DEFAULT_PROVIDER,
+        default=env_var("PROVIDER", DEFAULT_PROVIDER),
         help=f"LLM provider (default: {DEFAULT_PROVIDER})",
     )
     parser.add_argument(
         "--model", "-m",
+        default=env_var("MODEL"),
         help="Model ID (provider-specific, uses default if not set)",
     )
     parser.add_argument(
         "--region",
+        default=env_var("REGION"),
         help="Region (Bedrock: AWS region, Vertex: GCP region)",
     )
     parser.add_argument(
         "--host",
+        default=env_var("HOST"),
         help="Host URL for Ollama or OpenAI-compatible providers",
     )
     parser.add_argument(
@@ -69,10 +79,21 @@ def main():
     parser.add_argument(
         "--stats-file",
         type=str,
-        default=None,
+        default=env_var("STATS_FILE"),
         help="Path to write JSON stats (turns, tokens) after completion",
     )
     args = parser.parse_args()
+
+    # Apply env vars for special cases (int conversion, list splitting)
+    if args.max_turns is None:
+        max_turns_env = env_var("MAX_TURNS")
+        if max_turns_env:
+            args.max_turns = int(max_turns_env)
+
+    if args.hook is None:
+        hook_env = env_var("HOOK")
+        if hook_env:
+            args.hook = hook_env.split(":")
 
     # Validate openai_compatible provider requirements
     if args.provider == "openai_compatible":
