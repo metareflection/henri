@@ -184,6 +184,7 @@ Hooks are Python files that customize Henri without modifying core code. They ca
 - Remove tools (`REMOVE_TOOLS = {"bash"}`)
 - Configure auto-allow permissions (`AUTO_ALLOW_CWD = {"my_tool"}`)
 - Reject permission prompts for automation (`REJECT_PROMPTS = True`)
+- Add to the system prompt (`SYSTEM_PROMPT = "extra instructions..."`)
 
 See `hooks/` for examples and the [tutorial](TUTORIAL.md#part-8-hooks) for details.
 

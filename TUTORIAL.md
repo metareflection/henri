@@ -441,6 +441,7 @@ Hooks can define any of these variables:
 | `AUTO_ALLOW_CWD` | `set[str]` | Tools to auto-allow within cwd |
 | `AUTO_ALLOW` | `set[str]` | Tools to always allow (no prompts) |
 | `REJECT_PROMPTS` | `bool` | Reject (don't prompt) for permissions |
+| `SYSTEM_PROMPT` | `str` | Extra text appended to system prompt |
 
 ### Example: Adding a Domain-Specific Tool
 

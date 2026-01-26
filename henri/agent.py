@@ -51,6 +51,7 @@ def build_system_prompt(
     auto_allow_cwd: set[str] | None = None,
     auto_allow: set[str] | None = None,
     reject_prompts: bool = False,
+    extra_prompt: str | None = None,
 ) -> str:
     """Build system prompt with available tools and permissions."""
     tool_lines, perm_lines = summarize_tools_and_permissions(
@@ -58,7 +59,8 @@ def build_system_prompt(
     )
     tools_section = "\n".join(tool_lines)
     perms_section = "\n".join(perm_lines)
-    return f"""You are Henri, a helpful coding assistant.
+
+    base = f"""You are Henri, a helpful coding assistant.
 
 You have access to these tools:
 {tools_section}
@@ -67,6 +69,10 @@ Permissions:
 {perms_section}
 
 Be concise and direct in your responses."""
+
+    if extra_prompt:
+        return base + "\n" + extra_prompt
+    return base
 
 
 class Agent:
@@ -79,6 +85,7 @@ class Agent:
         console: Console | None = None,
         permissions: PermissionManager | None = None,
         max_turns: int | None = None,
+        extra_system_prompt: str | None = None,
     ):
         self.provider = provider
         self.tools = tools or get_default_tools()
@@ -90,6 +97,7 @@ class Agent:
             auto_allow_cwd=self.permissions.auto_allow_cwd,
             auto_allow=self.permissions.auto_allow,
             reject_prompts=self.permissions.reject_prompts,
+            extra_prompt=extra_system_prompt,
         )
         self.messages: list[Message] = []
         self._status: Status | None = None
@@ -325,6 +333,7 @@ async def run_agent(
     auto_allow = set(DEFAULT_AUTO_ALLOW)
 
     reject_prompts = False
+    extra_system_prompt = None
     for hook in hooks:
         if hasattr(hook, "PATH_BASED"):
             path_based |= hook.PATH_BASED
@@ -334,6 +343,12 @@ async def run_agent(
             auto_allow |= hook.AUTO_ALLOW
         if hasattr(hook, "REJECT_PROMPTS"):
             reject_prompts = reject_prompts or hook.REJECT_PROMPTS
+        if hasattr(hook, "SYSTEM_PROMPT"):
+            # Concatenate system prompts from multiple hooks
+            if extra_system_prompt is None:
+                extra_system_prompt = hook.SYSTEM_PROMPT
+            else:
+                extra_system_prompt += "\n" + hook.SYSTEM_PROMPT
 
     permissions = PermissionManager(
         console=console,
@@ -348,6 +363,7 @@ async def run_agent(
         console=console,
         permissions=permissions,
         max_turns=max_turns,
+        extra_system_prompt=extra_system_prompt,
     )
 
     console.print(Panel(
