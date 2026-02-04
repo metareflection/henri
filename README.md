@@ -189,11 +189,11 @@ Hooks are Python files that customize Henri without modifying core code. They ca
 
 See `hooks/` for examples and the [tutorial](TUTORIAL.md#part-8-hooks) for details.
 
-### RLM Hook
+#### RLM Hook
 
 The `hooks/rlm.py` hook adds an `rlm_query` tool that uses [RLM](https://github.com/alexzhang13/rlm) (Recursive Language Models) to analyze codebases. It runs inside a sandboxed Docker container with the project mounted read-only.
 
-We use [a version of RLM customized for Henri](https://github.com/metareflection/rlm/tree/henri) by matching henri's provider and a small tweak to mount the project directory read-only in Docker. This version should be `pip install -e .` in the henri environment.
+We use [a version of RLM customized for Henri](https://github.com/metareflection/rlm/tree/henri) by matching henri's providers and tweaking volume mounting to add the project directory read-only in Docker. This version should be `pip install -e .` in the henri environment.
 
 ```bash
 # Requires: Docker running, rlm package installed
