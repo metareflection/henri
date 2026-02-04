@@ -19,10 +19,12 @@ Configure via environment variables:
     HENRI_RLM_BACKEND    - RLM backend (default: inferred from HENRI_PROVIDER)
     HENRI_RLM_MODEL      - RLM model (default: inferred from HENRI_MODEL)
     HENRI_RLM_MAX_ITERS  - Max RLM iterations (default: 15)
+    HENRI_RLM_TIMEOUT    - Timeout per query in seconds (default: 60)
 """
 
 import hashlib
 import os
+import signal
 import tempfile
 
 from henri.tools.base import Tool
@@ -230,35 +232,73 @@ class RLMQueryTool(Tool):
         if not os.path.isdir(project_path):
             return f"[error: directory not found: {path}]"
 
+        timeout = int(os.environ.get("HENRI_RLM_TIMEOUT", "60"))
+
         try:
-            rlm, reused = self._get_or_create_rlm(project_path)
-            session_status = "reused" if reused else "new"
-            print(f"[RLM session: {session_status}]")
-
-            # Build context prompt
-            context = (
-                f"You have access to a project directory at PROJECT_DIR={project_path!r}. "
-                f"Use Python to explore it (os.walk, open, etc.). "
-                f"Variables from previous queries may be available in the REPL namespace.\n\n"
-                f"Task: {query}"
-            )
-
-            result = rlm.completion(context, root_prompt=query)
-
-            # Update fingerprint after successful completion
-            self._fs_fingerprint = _fs_fingerprint(project_path)
-
-            # Format output with iteration details
-            iterations_log = _format_iterations(self._logger.log_file_path)
-            output = f"[RLM session: {session_status}, time: {result.execution_time:.1f}s, {result.usage_summary.to_dict()}]\n\n"
-            if iterations_log:
-                output += f"=== RLM Iterations ===\n{iterations_log}\n\n"
-            output += f"=== RLM Result ===\n{result.response}"
-
-            return output
-
+            result = self._run_with_timeout(project_path, query, timeout)
+            return result
         except Exception as e:
             return f"[error: RLM failed: {e}]"
+
+    def _run_query(self, project_path: str, query: str):
+        """Run a single RLM query, returning (result, session_status)."""
+        rlm, reused = self._get_or_create_rlm(project_path)
+        session_status = "reused" if reused else "new"
+        print(f"[RLM session: {session_status}]")
+
+        context = (
+            f"You have access to a project directory at PROJECT_DIR={project_path!r}. "
+            f"Use Python to explore it (os.walk, open, etc.). "
+            f"Variables from previous queries may be available in the REPL namespace.\n\n"
+            f"Task: {query}"
+        )
+
+        result = rlm.completion(context, root_prompt=query)
+
+        # Update fingerprint after successful completion
+        self._fs_fingerprint = _fs_fingerprint(project_path)
+
+        return result, session_status
+
+    def _format_result(self, result, session_status: str) -> str:
+        """Format an RLM result into output string."""
+        iterations_log = _format_iterations(self._logger.log_file_path)
+        output = f"[RLM session: {session_status}, time: {result.execution_time:.1f}s, {result.usage_summary.to_dict()}]\n\n"
+        if iterations_log:
+            output += f"=== RLM Iterations ===\n{iterations_log}\n\n"
+        output += f"=== RLM Result ===\n{result.response}"
+        return output
+
+    def _run_with_timeout(self, project_path: str, query: str, timeout: int) -> str:
+        """Run query with timeout. If a reused session times out, retry fresh."""
+        was_reused = self._rlm is not None
+
+        def _alarm_handler(signum, frame):
+            raise TimeoutError()
+
+        old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+        try:
+            signal.alarm(timeout)
+            result, session_status = self._run_query(project_path, query)
+            signal.alarm(0)
+            return self._format_result(result, session_status)
+        except TimeoutError:
+            signal.alarm(0)
+            if was_reused:
+                # Reused session timed out — retry with a fresh one
+                print(f"[RLM session timed out after {timeout}s, retrying with fresh session]")
+                if self._rlm is not None:
+                    self._rlm.close()
+                self._rlm = None
+                self._fs_fingerprint = None
+                signal.alarm(timeout)
+                result, session_status = self._run_query(project_path, query)
+                signal.alarm(0)
+                return self._format_result(result, session_status)
+            else:
+                raise TimeoutError(f"RLM query timed out after {timeout}s")
+        finally:
+            signal.signal(signal.SIGALRM, old_handler)
 
 
 # Tools to add
