@@ -5,9 +5,14 @@ Usage:
 
 Adds an rlm_query tool that uses RLM to analyze large contexts
 (e.g., codebases) by recursively decomposing the problem with
-sub-model calls inside a sandboxed Docker REPL.
+sub-model calls inside a sandboxed local REPL.
 
-Requires: Docker running, rlm package installed (pip install -e ../rlm)
+The RLM session persists across calls as long as the project
+filesystem hasn't changed. If any files have been modified, added,
+or deleted since the last query, the session is automatically
+invalidated and a fresh one is created.
+
+Requires: rlm package installed (pip install -e ../rlm)
 where ../rlm is a clone of https://github.com/metareflection/rlm/tree/henri
 
 Configure via environment variables:
@@ -16,6 +21,7 @@ Configure via environment variables:
     HENRI_RLM_MAX_ITERS  - Max RLM iterations (default: 15)
 """
 
+import hashlib
 import os
 import tempfile
 
@@ -79,6 +85,24 @@ def _get_rlm_config() -> dict:
     }
 
 
+def _fs_fingerprint(path: str) -> str:
+    """Hash file paths and mtimes under a directory to detect changes."""
+    h = hashlib.md5()
+    for root, dirs, files in sorted(os.walk(path)):
+        # Skip hidden dirs (.git, .venv, etc.)
+        dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+        for f in sorted(files):
+            if f.startswith("."):
+                continue
+            fp = os.path.join(root, f)
+            try:
+                mtime = os.stat(fp).st_mtime_ns
+            except OSError:
+                continue
+            h.update(f"{fp}\0{mtime}".encode())
+    return h.hexdigest()
+
+
 def _format_iterations(log_path: str) -> str:
     """Format RLM iterations from the log file for display."""
     import json
@@ -113,16 +137,21 @@ def _format_iterations(log_path: str) -> str:
 
 
 class RLMQueryTool(Tool):
-    """Analyze a codebase or large context using Recursive Language Models."""
+    """Analyze a codebase or large context using Recursive Language Models.
+
+    The RLM session persists across calls as long as the project filesystem
+    hasn't changed. If files are modified between calls, the session is
+    automatically invalidated.
+    """
 
     name = "rlm_query"
     description = (
         "Use RLM (Recursive Language Model) to analyze a codebase or large context. "
-        "RLM spawns a sandboxed Docker REPL where it can read files, write Python code, "
+        "RLM uses a sandboxed REPL where it can read files, write Python code, "
         "and make sub-model calls to decompose the problem recursively. "
-        "The project directory is mounted read-only at /project in the container. "
-        "Returns a detailed analysis. Use this for tasks requiring deep codebase understanding "
-        "across many files."
+        "The session persists across calls as long as the project files haven't changed. "
+        "If files were modified between calls, a fresh session is started automatically. "
+        "Use this for tasks requiring deep codebase understanding across many files."
     )
     parameters = {
         "type": "object",
@@ -141,10 +170,58 @@ class RLMQueryTool(Tool):
     }
     requires_permission = True
 
+    def __init__(self):
+        self._rlm = None
+        self._project_path = None
+        self._fs_fingerprint = None
+        self._logger = None
+
+    def _get_or_create_rlm(self, project_path: str) -> tuple:
+        """Get existing RLM instance or create a new one if filesystem changed.
+
+        Returns (rlm_instance, reused: bool).
+        """
+        from rlm import RLM
+        from rlm.logger import RLMLogger
+
+        fingerprint = _fs_fingerprint(project_path)
+
+        # Reuse if same project and filesystem unchanged
+        if (
+            self._rlm is not None
+            and self._project_path == project_path
+            and self._fs_fingerprint == fingerprint
+        ):
+            return self._rlm, True
+
+        # Clean up old instance
+        if self._rlm is not None:
+            self._rlm.close()
+
+        config = _get_rlm_config()
+        log_dir = tempfile.mkdtemp(prefix="henri_rlm_")
+        self._logger = RLMLogger(log_dir=log_dir, file_name="rlm")
+
+        self._rlm = RLM(
+            backend=config["backend"],
+            backend_kwargs=config["backend_kwargs"],
+            environment="local",
+            environment_kwargs={
+                "setup_code": f"import os; PROJECT_DIR = {project_path!r}",
+            },
+            max_iterations=config["max_iterations"],
+            max_depth=1,
+            logger=self._logger,
+            verbose=True,
+            persistent=True,
+        )
+        self._project_path = project_path
+        self._fs_fingerprint = fingerprint
+        return self._rlm, False
+
     def execute(self, query: str, path: str = ".") -> str:
         try:
             from rlm import RLM
-            from rlm.logger import RLMLogger
         except ImportError:
             return "[error: rlm package not installed. Install with: pip install -e path/to/rlm]"
 
@@ -153,44 +230,30 @@ class RLMQueryTool(Tool):
         if not os.path.isdir(project_path):
             return f"[error: directory not found: {path}]"
 
-        # Get RLM config
-        config = _get_rlm_config()
-
-        # Set up logger to capture iterations
-        log_dir = tempfile.mkdtemp(prefix="henri_rlm_")
-        logger = RLMLogger(log_dir=log_dir, file_name="rlm")
-
         try:
-            rlm = RLM(
-                backend=config["backend"],
-                backend_kwargs=config["backend_kwargs"],
-                environment="docker",
-                environment_kwargs={
-                    "volumes": {project_path: "/project:ro"},
-                },
-                max_iterations=config["max_iterations"],
-                max_depth=1,
-                logger=logger,
-                verbose=True,
-            )
+            rlm, reused = self._get_or_create_rlm(project_path)
+            session_status = "reused" if reused else "new"
+            print(f"[RLM session: {session_status}]")
 
-            # Build context prompt that tells RLM where to find the project
+            # Build context prompt
             context = (
-                f"You have access to a project directory mounted at /project. "
+                f"You have access to a project directory at PROJECT_DIR={project_path!r}. "
                 f"Use Python to explore it (os.walk, open, etc.). "
-                f"The project is read-only.\n\n"
+                f"Variables from previous queries may be available in the REPL namespace.\n\n"
                 f"Task: {query}"
             )
 
             result = rlm.completion(context, root_prompt=query)
 
+            # Update fingerprint after successful completion
+            self._fs_fingerprint = _fs_fingerprint(project_path)
+
             # Format output with iteration details
-            iterations_log = _format_iterations(logger.log_file_path)
-            output = ""
+            iterations_log = _format_iterations(self._logger.log_file_path)
+            output = f"[RLM session: {session_status}, time: {result.execution_time:.1f}s, {result.usage_summary.to_dict()}]\n\n"
             if iterations_log:
                 output += f"=== RLM Iterations ===\n{iterations_log}\n\n"
             output += f"=== RLM Result ===\n{result.response}"
-            output += f"\n\n[RLM: {result.usage_summary.to_dict()}, time: {result.execution_time:.1f}s]"
 
             return output
 
@@ -203,8 +266,10 @@ TOOLS = [RLMQueryTool()]
 
 SYSTEM_PROMPT = (
     "You have access to the rlm_query tool which uses Recursive Language Models "
-    "to analyze codebases. It spawns a sandboxed Docker container with the project "
-    "mounted read-only at /project. The RLM can write Python code to explore files, "
-    "search patterns, and call sub-models to analyze individual components. "
+    "to analyze codebases. It uses a local REPL where the RLM can write Python code "
+    "to explore files, search patterns, and call sub-models to analyze individual "
+    "components. The session automatically persists across calls when the project "
+    "files haven't changed, allowing iterative analysis. If files have been modified "
+    "since the last query, a fresh session is started automatically. "
     "Use it when you need deep analysis across many files in a codebase."
 )
