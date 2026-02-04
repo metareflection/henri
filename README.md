@@ -171,6 +171,7 @@ henri --max-turns 10                 # Stop after 10 turns (default: unlimited)
 
 # Load hooks (can be used multiple times)
 henri --hook hooks/dafny.py          # Add dafny_verify tool
+henri --hook hooks/rlm.py            # Add rlm_query tool (requires Docker)
 henri --hook hooks/dafny.py --hook hooks/bench.py  # Combine hooks
 ```
 
@@ -187,6 +188,22 @@ Hooks are Python files that customize Henri without modifying core code. They ca
 - Add to the system prompt (`SYSTEM_PROMPT = "extra instructions..."`)
 
 See `hooks/` for examples and the [tutorial](TUTORIAL.md#part-8-hooks) for details.
+
+### RLM Hook
+
+The `hooks/rlm.py` hook adds an `rlm_query` tool that uses [RLM](https://github.com/alexzhang13/rlm) (Recursive Language Models) to analyze codebases. It runs inside a sandboxed Docker container with the project mounted read-only.
+
+We use [a version of RLM customized for Henri](https://github.com/metareflection/rlm/tree/henri) by matching henri's provider and a small tweak to mount the project directory read-only in Docker. This version should be `pip install -e .` in the henri environment.
+
+```bash
+# Requires: Docker running, rlm package installed
+henri --hook hooks/rlm.py
+```
+
+Configuration via environment variables:
+- `HENRI_RLM_BACKEND` - RLM backend (default: inferred from `HENRI_PROVIDER`)
+- `HENRI_RLM_MODEL` - RLM model (default: inferred from `HENRI_MODEL`)
+- `HENRI_RLM_MAX_ITERS` - Max RLM iterations (default: 15)
 
 ### Used in
 
