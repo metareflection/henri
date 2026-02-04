@@ -8,6 +8,7 @@ Adds an rlm_query tool that uses RLM to analyze large contexts
 sub-model calls inside a sandboxed Docker REPL.
 
 Requires: Docker running, rlm package installed (pip install -e ../rlm)
+where ../rlm is a clone of https://github.com/metareflection/rlm/tree/henri
 
 Configure via environment variables:
     HENRI_RLM_BACKEND    - RLM backend (default: inferred from HENRI_PROVIDER)
