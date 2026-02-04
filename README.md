@@ -189,7 +189,7 @@ Hooks are Python files that customize Henri without modifying core code. They ca
 
 See `hooks/` for examples and the [tutorial](TUTORIAL.md#part-8-hooks) for details.
 
-### RLM Hook
+#### RLM Hook
 
 The `hooks/rlm.py` hook adds an `rlm_query` tool that uses [RLM](https://github.com/alexzhang13/rlm) (Recursive Language Models) to analyze codebases. It runs inside a sandboxed Docker container with the project mounted read-only.
 
