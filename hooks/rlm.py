@@ -3,17 +3,19 @@
 Usage:
     henri --hook hooks/rlm.py
 
-Adds an rlm_query tool that uses RLM to analyze large contexts
-(e.g., codebases) by recursively decomposing the problem with
-sub-model calls inside a sandboxed local REPL.
+Adds an rlm_query tool that uses RLM (https://github.com/alexzhang13/rlm)
+to analyze large contexts (e.g., codebases) by recursively decomposing
+the problem with sub-model calls inside a sandboxed local REPL.
 
-The RLM session persists across calls as long as the project
-filesystem hasn't changed. If any files have been modified, added,
-or deleted since the last query, the session is automatically
-invalidated and a fresh one is created.
+The RLM session persists across calls as long as the project filesystem
+hasn't changed. If any files have been modified, added, or deleted since
+the last query, the session is automatically invalidated and a fresh one
+is created. If a reused session times out, it retries with a fresh one.
 
-Requires: rlm package installed (pip install -e ../rlm)
-where ../rlm is a clone of https://github.com/metareflection/rlm/tree/henri
+We use a version of RLM customized for Henri:
+    https://github.com/metareflection/rlm/tree/henri
+which matches henri's providers and tweaks volume mounting. Install with:
+    pip install -e ../rlm
 
 Configure via environment variables:
     HENRI_RLM_BACKEND    - RLM backend (default: inferred from HENRI_PROVIDER)
