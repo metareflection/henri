@@ -2,6 +2,7 @@
 
 from henri.config import DEFAULT_PROVIDER
 
+from .anthropic import AnthropicProvider
 from .base import Provider, StreamEvent
 from .bedrock import BedrockProvider
 from .google import GoogleProvider
@@ -11,6 +12,7 @@ from .vertex import VertexProvider
 
 # Registry of available providers
 PROVIDERS: dict[str, type[Provider]] = {
+    "anthropic": AnthropicProvider,
     "bedrock": BedrockProvider,
     "google": GoogleProvider,
     "ollama": OllamaProvider,
@@ -42,6 +44,7 @@ def create_provider(name: str = DEFAULT_PROVIDER, **kwargs) -> Provider:
 __all__ = [
     "Provider",
     "StreamEvent",
+    "AnthropicProvider",
     "BedrockProvider",
     "GoogleProvider",
     "OllamaProvider",

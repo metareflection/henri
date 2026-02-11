@@ -6,7 +6,7 @@ and is inspired by Claude Code.
 
 ## Features
 
-- **Multiple LLM providers** - AWS Bedrock, Google Gemini, Vertex AI, Ollama, OpenAI-compatible (VLLM, etc.)
+- **Multiple LLM providers** - Anthropic API, AWS Bedrock, Google Gemini, Vertex AI, Ollama, OpenAI-compatible (VLLM, etc.)
 - **Streaming responses** - Real-time token streaming
 - **Tool system** - bash, file read/write/edit capabilities, grep/glob, ...
 - **Permission management** - Prompt or auto-deny operations
@@ -23,6 +23,9 @@ brew install ripgrep  # for the grep tool
 ## Usage
 
 ```bash
+# Anthropic API
+henri --provider anthropic
+
 # AWS Bedrock (default)
 henri
 
@@ -40,6 +43,9 @@ henri --provider openai_compatible --model <model-name> --host <server-url>
 ```
 
 ### Provider Setup
+
+**Anthropic API**:
+- Set `ANTHROPIC_API_KEY`
 
 **AWS Bedrock** (default):
 - Configure AWS credentials (`aws configure` or environment variables)
@@ -91,11 +97,12 @@ When Henri wants to execute a tool that requires permission (like `bash` or `wri
 henri/
 ├── messages.py      # Core data types (Message, ToolCall, ToolResult)
 ├── providers/
-│   ├── base.py      # Provider abstract base class
-│   ├── bedrock.py   # AWS Bedrock
-│   ├── google.py    # Google Gemini
-│   ├── vertex.py    # Vertex AI
-│   └── ollama.py    # Ollama
+│   ├── base.py       # Provider abstract base class
+│   ├── anthropic.py  # Anthropic API (+ base for Vertex)
+│   ├── bedrock.py    # AWS Bedrock
+│   ├── google.py     # Google Gemini
+│   ├── vertex.py     # Vertex AI (extends anthropic.py)
+│   └── ollama.py     # Ollama
 ├── tools/
 │   └── base.py      # Tool base class + built-in tools
 ├── permissions.py   # Permission management
@@ -156,7 +163,7 @@ Then register it in `providers/__init__.py`.
 
 ```bash
 # Provider selection
-henri --provider bedrock|google|vertex|ollama
+henri --provider anthropic|bedrock|google|vertex|ollama
 
 # Model override
 henri --model <model-id>

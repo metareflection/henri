@@ -39,6 +39,9 @@ DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_VERTEX_MODEL = "claude-sonnet-4-5"
 DEFAULT_VERTEX_REGION = "us-east5"
 
+# Direct Anthropic API defaults
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5-20250929"
+
 
 def get_provider_config(
     provider: str | None = None,
@@ -81,6 +84,7 @@ def get_provider_config(
             "google": DEFAULT_GOOGLE_MODEL,
             "ollama": DEFAULT_OLLAMA_MODEL,
             "vertex": DEFAULT_VERTEX_MODEL,
+            "anthropic": DEFAULT_ANTHROPIC_MODEL,
         }
         resolved_model = model_defaults.get(resolved_provider)
 
